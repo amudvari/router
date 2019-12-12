@@ -16,37 +16,22 @@ ARP_OP_REPLY = 0x0002
 OSPF_NUM     = 0x0089
 
 class MacLearningController(Thread):     
-    def __init__(self, sw, ctrl_port=1,  start_wait=0.3):
+    def __init__(self, sw, hw=None, cpw=None, ctrl_port=1,  start_wait=0.3):
 #hw, cpw, 
         super(MacLearningController, self).__init__()
         self.sw = sw
-	print('################')
-	print('###################')
+	self.hwIP = str(hw) 
+	self.cpwIP =str(cpw)
 	print (self.sw.name)
-	time.sleep(4)
-	if self.sw.name == 'sw2':
-		print("#####************")
-		self.hwIP = '10.0.0.2'
-		self.cpwIP ='10.0.1.2'
-		self.sw.insertTableEntry(table_name='MyIngress.ipv4_lpm',
-                        match_fields={'hdr.ipv4.dstAddr': ["10.0.0.2", 32]},
-                        action_name='MyIngress.ipv4_forward',
-                        action_params={'nextHopIP': "10.0.0.2"})
+	print(self.hwIP)
+	print(self.cpwIP) 
 
-		self.sw.insertTableEntry(table_name='MyIngress.local_ipv4',
-                        match_fields={'hdr.ipv4.dstAddr': ["10.0.1.2", 32]},
-                        action_name='MyIngress.writer',
-                        action_params={'localIPcontrol': 1})
-	if self.sw.name == 'sw3':
-		self.hwIP = '10.0.0.3'
-		self.cpwIP ='10.0.1.3'
-		self.sw.insertTableEntry(table_name='MyIngress.ipv4_lpm',
-                        match_fields={'hdr.ipv4.dstAddr': ["10.0.0.3", 32]},
-                        action_name='MyIngress.ipv4_forward',
-                        action_params={'nextHopIP': "10.0.0.3"})
-
-		self.sw.insertTableEntry(table_name='MyIngress.local_ipv4',
-                        match_fields={'hdr.ipv4.dstAddr': ["10.0.1.3", 32]},
+	self.sw.insertTableEntry(table_name='MyIngress.ipv4_lpm',
+                match_fields={'hdr.ipv4.dstAddr': [self.hwIP, 32]},
+                action_name='MyIngress.ipv4_forward',
+                action_params={'nextHopIP': self.hwIP})
+	self.sw.insertTableEntry(table_name='MyIngress.local_ipv4',
+                        match_fields={'hdr.ipv4.dstAddr': [self.cpwIP, 32]},
                         action_name='MyIngress.writer',
                         action_params={'localIPcontrol': 1})
 
@@ -192,7 +177,6 @@ class MacLearningController(Thread):
 	arpTimeout = 10000
 	time.sleep(2);
 	#self.sendPing();
-	print("in clocker")
 
 	while (True):  
 		#print self.port_for_mac     	

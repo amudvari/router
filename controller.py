@@ -25,6 +25,7 @@ class MacLearningController(Thread):
 	print (self.sw.name)
 	time.sleep(4)
 	if self.sw.name == 'sw2':
+		print("#####************")
 		self.hwIP = '10.0.0.2'
 		self.cpwIP ='10.0.1.2'
 		self.sw.insertTableEntry(table_name='MyIngress.ipv4_lpm',
@@ -42,7 +43,7 @@ class MacLearningController(Thread):
 		self.sw.insertTableEntry(table_name='MyIngress.ipv4_lpm',
                         match_fields={'hdr.ipv4.dstAddr': ["10.0.0.3", 32]},
                         action_name='MyIngress.ipv4_forward',
-                        action_params={'nextHopIP': "10.0.0.2"})
+                        action_params={'nextHopIP': "10.0.0.3"})
 
 		self.sw.insertTableEntry(table_name='MyIngress.local_ipv4',
                         match_fields={'hdr.ipv4.dstAddr': ["10.0.1.3", 32]},
@@ -323,7 +324,7 @@ class MacLearningController(Thread):
 		#print(routerList, currentRouter)
 		#print(self.nextHop)
 
-		if (time.time()-self.startTime > 12 and self.Track==1):
+		if (time.time()-self.startTime > 18 and self.Track==1):
 			self.changeRules(routerList)	
 
 		self.fwdLSU(args[3])

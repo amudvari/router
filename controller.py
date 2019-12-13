@@ -1,11 +1,12 @@
 from threading import Thread, Event
 from scapy.all import sendp
 from scapy.all import Packet, Ether, IP, ARP, ICMP
+from scapy.all import Raw
 from async_sniff import sniff
 from cpu_metadata import CPUMetadata
 from dijkstra import dijkstra
 import time
-import pwospfpackets
+from  pwospfpackets  import PWOSPF_Hdr, PWOSPF_Hello, PWOSPF_LSU, PWOSPF_LSA
 import socket
 from mininet.topo import Topo
 
@@ -127,11 +128,15 @@ class MacLearningController(Thread):
 
 	elif IP in pkt:
 	    #print "other"
-	    #print ('received OSPF proto is %d'%pkt[pwospfpackets.OSPF_Hdr].type)   
-	    if pwospfpackets.OSPF_Hdr in pkt:     
-	        if pkt[pwospfpackets.OSPF_Hdr].type == 1:
+	    #print ('received OSPF proto is %d'%pkt[PWOSPF_Hdr].type)
+	    ospf_layer = PWOSPF_Hdr(pkt[Raw])
+	    pkt[IP].remove_payload()
+            pkt=pkt/ospf_layer
+   
+	    if PWOSPF_Hdr in pkt:     
+	        if pkt[PWOSPF_Hdr].type == 1:
 		    self.rcvHello(pkt)
-	        elif pkt[pwospfpackets.OSPF_Hdr].type == 4:
+	        elif pkt[PWOSPF_Hdr].type == 4:
 		    self.rcvLSU(pkt)
 	
 	if IP in pkt: 
@@ -214,17 +219,28 @@ class MacLearningController(Thread):
 
 
     def sendHello(self, *args, **kwargs):      #send hello message
-	A=(Ether(dst='ff:ff:ff:ff:ff:ff')/
-	CPUMetadata(fromCpu=1, origEtherType=0x800, srcPort=1)/
-	IP(src=self.hwIP)/
-	pwospfpackets.OSPF_Hdr(src=self.hwIP)/pwospfpackets.OSPF_Hello(hellointerval=10, prio=1, deadinterval=40 ))
+
+	#A=(Ether(dst='ff:ff:ff:ff:ff:ff')/
+	#CPUMetadata(fromCpu=1, origEtherType=0x800, srcPort=1)/
+	#IP(src=self.hwIP)/
+	#PWOSPF_Hdr(src=self.hwIP)/pwospfpackets.PWOSPF_Hello(hellointerval=10, prio=1, deadinterval=40 ))
 	#print("Hello sent")
+
+	A= (Ether(dst='ff:ff:ff:ff:ff:ff')/ 
+	CPUMetadata(fromCpu=1, origEtherType=0x800, srcPort=1)/
+        IP(src=self.cpwIP, dst='224.0.0.5', proto=89)/
+	PWOSPF_Hdr(routerid=self.hwIP, areaid=self.cpwIP, type=1)/
+	PWOSPF_Hello(netmask=self.hwIP, helloint=10))
+
+	#print("Hello sent")
+
 	self.send(A)
+
 
     def rcvHello(self, *args, **kwargs):     #handle received Hello message
 	pkt = args[0]
 	#print("Hello received")
-	neighborID = pkt[pwospfpackets.OSPF_Hdr].src
+	neighborID = pkt[PWOSPF_Hdr].routerid
 	if neighborID not in self.neighborsPort: 
 		self.neighborsPort[neighborID] = [pkt[CPUMetadata].srcPort, time.time()] 
 		self.sendLSU();
@@ -241,15 +257,21 @@ class MacLearningController(Thread):
 	#print("sending LSU")	
 	arg = []
 	for neighborID in self.neighborsPort:
-		arg.append(pwospfpackets.OSPF_Link(type =3, metric =10, data=self.hwIP, id = neighborID))	
+		arg.append(PWOSPF_LSA(subnet=self.hwIP, mask="255.255.255.0", routerid=self.cpwIP))	
 	#print(self.neighborsPort)
 	self.genSeq = self.genSeq+1;
 	#print("LSU sent")
+	#A= (Ether(dst='ff:ff:ff:ff:ff:ff')/
+	#CPUMetadata(fromCpu=1, origEtherType=0x800, srcPort=1)/
+	#IP(src=self.hwIP, ttl=8)/
+	#PWOSPF_Hdr(src=self.hwIP)/
+	#pwospfpackets.PWOSPF_LSU(lsalist=pwospfpackets.OSPF_Router_LSA(seq=self.genSeq, age=10, adrouter=self.cpwIP, linklist=arg, id=self.hwIP )  ) )
+
 	A= (Ether(dst='ff:ff:ff:ff:ff:ff')/
 	CPUMetadata(fromCpu=1, origEtherType=0x800, srcPort=1)/
-	IP(src=self.hwIP, ttl=8)/
-	pwospfpackets.OSPF_Hdr(src=self.hwIP)/
-	pwospfpackets.OSPF_LSUpd(lsalist=pwospfpackets.OSPF_Router_LSA(seq=self.genSeq, age=10, adrouter=self.cpwIP, linklist=arg, id=self.hwIP )  ) )
+	IP(src=self.cpwIP, dst="224.0.0.5", ttl=8, proto=89)/
+	PWOSPF_Hdr(routerid=self.hwIP, areaid=self.cpwIP, type=4)/
+	PWOSPF_LSU(seq=self.genSeq, lsalist=arg)  ) 
 
 	self.send(A)
 
@@ -259,10 +281,9 @@ class MacLearningController(Thread):
 	#print("LSU received")
 	#print pkt[pwospfpackets.OSPF_Router_LSA].id
 	#print self.hwIP
-	origin = pkt[pwospfpackets.OSPF_Router_LSA].id
-	nodelist = pkt[pwospfpackets.OSPF_Router_LSA].linklist
-	nodeseq = pkt[pwospfpackets.OSPF_Router_LSA].seq
-	nodeage = pkt[pwospfpackets.OSPF_Router_LSA].age
+	origin = pkt[PWOSPF_Hdr].routerid
+	nodelist = pkt[PWOSPF_LSU].lsalist
+	nodeseq = pkt[PWOSPF_LSU].seq
 	#print (len(nodelist))
 
 	newstatus = 1	
@@ -284,7 +305,7 @@ class MacLearningController(Thread):
 
 	OriginRouters = []	
 	for entry in nodelist:
-		OriginRouters.append(entry.id)	
+		OriginRouters.append(entry.routerid)	
 
 	self.routers[origin] = OriginRouters
 	#print self.routers
